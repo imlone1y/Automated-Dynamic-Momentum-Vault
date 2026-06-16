@@ -13,7 +13,7 @@ contract DynamicMomentumVault {
     uint256 public totalVaultShares;
     uint256 public accumulatedPenaltyPool; 
 
-    // ⚡ 核心亮點：時光旅行時間偏移量（秒數）
+    // 時光旅行時間偏移量（秒數）
     uint256 public timeOffset;
 
     struct UserInfo {
