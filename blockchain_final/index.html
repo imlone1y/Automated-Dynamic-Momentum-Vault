@@ -85,7 +85,9 @@
                             <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider">贖回資產 (自動結算分紅/懲罰)</label>
                             <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">提示：存入不滿 3 天提款將扣除 5% 注入分紅池；滿 3 天可瓜分分紅池。</p>
                         </div>
-                        <div class="space-y-2 pt-4">
+                        <div class="space-y-3 pt-4">
+                            <input type="number" id="withdrawAmount" step="0.1" placeholder="輸入提款份額 (Shares)" class="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-2 text-white font-mono focus:outline-none focus:border-cyan-500 transition-all text-sm">
+                            
                             <button onclick="handleWithdraw()" class="btn-animate w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium py-3 rounded-xl border border-slate-700/50 text-sm">
                                 申請安全提款
                             </button>
@@ -129,17 +131,17 @@
     </main>
 
     <script>
-        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
+        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // 記得等下部署完要更新這裡！
 
         const ABI = [
             "function cheatForwardTime(uint256 _seconds) external",
             "function currentMarketState() view returns (uint8)",
             "function marketPrice() view returns (uint256)",
-            "function accumulatedPenaltyPool() view returns (uint256)", // 🔥 新增讀取紅池的 ABI
+            "function accumulatedPenaltyPool() view returns (uint256)", 
             "function userInfo(address) view returns (uint256 shares, uint256 depositTimestamp)",
             "function setMarketPrice(uint256 _newPrice) external",
             "function deposit() external payable",
-            "function withdraw() external",
+            "function withdraw(uint256 _sharesToWithdraw) external", // ⚡ 修改了 ABI
             "function emergencyRefund() external"
         ];
 
@@ -157,7 +159,6 @@
                     document.getElementById("connectBtn").className = "bg-slate-800 border border-slate-700 text-slate-300 font-mono text-sm px-4 py-2 rounded-xl";
                     await fetchBlockchainData(accounts[0]);
                     
-                    // 每 2 秒自動刷新，確保紅池跟份額即時跳動
                     setInterval(() => fetchBlockchainData(accounts[0]), 2000);
                 } catch (err) {
                     alert("使用者拒絕錢包連線或網路不符");
@@ -173,11 +174,11 @@
                 const price = await contract.marketPrice();
                 const state = await contract.currentMarketState();
                 const userData = await contract.userInfo(userAddress);
-                const poolAmount = await contract.accumulatedPenaltyPool(); // 🔥 抓取鏈上紅池金額
+                const poolAmount = await contract.accumulatedPenaltyPool(); 
                 
                 document.getElementById("uiPrice").innerText = `$${price.toString()}`;
                 document.getElementById("uiShares").innerText = ethers.formatEther(userData.shares);
-                document.getElementById("uiPool").innerText = `${ethers.formatEther(poolAmount)} ETH`; // 顯示紅池
+                document.getElementById("uiPool").innerText = `${ethers.formatEther(poolAmount)} ETH`; 
 
                 const states = ["BULL (牛市狂歡)", "BEAR (熊市保守)", "FLASH_CRASH (閃崩斷路器！)"];
                 document.getElementById("uiState").innerText = states[state];
@@ -208,14 +209,11 @@
             }
         }
 
-        // 🔥 新增功能：控制本地區塊鏈時間的低階 RPC 呼叫
-        // 修改後的網頁時光旅行按鈕點擊事件
         async function travelInTime(seconds) {
             if (!contract) return alert("請先連接錢包！");
             try {
-                // ⚡ 直接改發送合約交易！MetaMask 100% 聽得懂、絕不報錯
                 const tx = await contract.cheatForwardTime(seconds);
-                await tx.wait(); // 等待鏈上確認
+                await tx.wait(); 
                 alert("⏳ 時光旅行成功！合約已將虛擬時間快進 4 天。");
                 const accounts = await provider.send("eth_accounts", []);
                 await fetchBlockchainData(accounts[0]);
@@ -255,12 +253,20 @@
             }
         }
 
+        // ⚡ 修改重點：讀取輸入框的數值，並傳送給合約
         async function handleWithdraw() {
+            const amount = document.getElementById("withdrawAmount").value;
+            if(!amount) {
+                alert("請輸入想要提款的份額數量！");
+                return;
+            }
             try {
-                const tx = await contract.withdraw();
+                // 將輸入的數字轉換為鏈上使用的 18 位精度 Wei
+                const tx = await contract.withdraw(ethers.parseEther(amount));
                 await tx.wait();
                 const accounts = await provider.send("eth_accounts", []);
                 await fetchBlockchainData(accounts[0]);
+                document.getElementById("withdrawAmount").value = ""; // 提款成功後清空輸入框
             } catch (err) {
                 alert("提款拒絕：" + err.reason);
             }

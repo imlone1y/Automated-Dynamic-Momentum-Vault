@@ -27,7 +27,7 @@ contract DynamicMomentumVault {
     event Withdraw(address indexed user, uint256 amount, uint256 penaltyPaid, uint256 bonusReceived);
     event MarketStateChanged(MarketState newState, uint256 newPrice);
     event CircuitBreakerActivated(uint256 timestamp);
-    event TimeTraveled(uint256 totalOffset); // 時光旅行事件
+    event TimeTraveled(uint256 totalOffset);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not the vault owner");
@@ -45,13 +45,11 @@ contract DynamicMomentumVault {
         currentMarketState = MarketState.BULL;
     }
 
-    // ⚡ 核心新功能：讓合約時間前進的測試後門 (僅限 Owner 測試使用)
     function cheatForwardTime(uint256 _seconds) external onlyOwner {
         timeOffset += _seconds;
         emit TimeTraveled(timeOffset);
     }
 
-    // ⚡ 內部工具：獲取虛擬的「未來時間戳」
     function getVirtualTimestamp() public view returns (uint256) {
         return block.timestamp + timeOffset;
     }
@@ -61,7 +59,7 @@ contract DynamicMomentumVault {
         
         if (_newPrice <= CRASH_THRESHOLD) {
             currentMarketState = MarketState.FLASH_CRASH;
-            emit CircuitBreakerActivated(getVirtualTimestamp()); // 使用虛擬時間
+            emit CircuitBreakerActivated(getVirtualTimestamp()); 
         } else if (_newPrice < 800) {
             currentMarketState = MarketState.BEAR;
         } else {
@@ -82,41 +80,45 @@ contract DynamicMomentumVault {
         uint256 sharesToMint = (msg.value * shareMultiplier) / 100;
         
         userInfo[msg.sender].shares += sharesToMint;
-        userInfo[msg.sender].depositTimestamp = getVirtualTimestamp(); // ⚡ 記錄虛擬時間
+        userInfo[msg.sender].depositTimestamp = getVirtualTimestamp(); 
         totalVaultShares += sharesToMint;
 
         emit Deposit(msg.sender, msg.value, sharesToMint);
     }
 
-    function withdraw() external whenNotCrashed {
+    // ⚡ 修改重點：加入 _sharesToWithdraw 參數，支援部分提領
+    function withdraw(uint256 _sharesToWithdraw) external whenNotCrashed {
         UserInfo storage user = userInfo[msg.sender];
-        require(user.shares > 0, "No shares to withdraw");
+        require(_sharesToWithdraw > 0, "Cannot withdraw 0 shares");
+        require(user.shares >= _sharesToWithdraw, "Not enough shares to withdraw");
 
-        uint256 baseAmount = user.shares; 
+        uint256 baseAmount = _sharesToWithdraw; 
         uint256 penalty = 0;
         uint256 bonus = 0;
 
-        // ⚡ 用虛擬時間來做減法判斷是否滿 3 天！
         if (getVirtualTimestamp() - user.depositTimestamp < EARLY_WITHDRAW_PENALTY_TIME) {
             penalty = (baseAmount * 5) / 100; 
             accumulatedPenaltyPool += penalty;
         } else {
             if (accumulatedPenaltyPool > 0 && totalVaultShares > 0) {
-                bonus = (accumulatedPenaltyPool * user.shares) / totalVaultShares;
+                // 分紅會根據你「這次提領的份額」按比例計算，非常公平
+                bonus = (accumulatedPenaltyPool * _sharesToWithdraw) / totalVaultShares;
                 accumulatedPenaltyPool -= bonus;
             }
         }
 
         uint256 finalWithdrawAmount = baseAmount - penalty + bonus;
         
-        totalVaultShares -= user.shares;
-        user.shares = 0;
+        // ⚡ 修改重點：用減法扣除份額，不再直接歸零
+        totalVaultShares -= _sharesToWithdraw;
+        user.shares -= _sharesToWithdraw;
 
         payable(msg.sender).transfer(finalWithdrawAmount);
 
         emit Withdraw(msg.sender, finalWithdrawAmount, penalty, bonus);
     }
 
+    // 緊急退款保持「全額撤退」設定，因為災難發生時不該還讓用戶慢慢填數字
     function emergencyRefund() external {
         require(currentMarketState == MarketState.FLASH_CRASH, "Emergency refund not active");
         UserInfo storage user = userInfo[msg.sender];
