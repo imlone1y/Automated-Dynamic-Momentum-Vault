@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Momentum Vault - Web3 Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'JetBrains Mono', 'Noto Sans TC', sans-serif; }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+            box-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.15);
+            transform: translateY(-2px);
+        }
+        .btn-animate { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-animate:active { transform: scale(0.96); }
+    </style>
+</head>
+<body class="bg-[#030712] text-slate-100 min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
+
+    <nav class="border-b border-slate-900 bg-[#030712]/70 backdrop-blur-md px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center space-x-4">
+            <div class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" id="statePing"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" id="stateIndicator"></span>
+            </div>
+            <span class="text-lg font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500">
+                DYNAMIC MOMENTUM VAULT
+            </span>
+        </div>
+        <button id="connectBtn" class="btn-animate bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium px-6 py-2 rounded-xl shadow-lg shadow-cyan-500/10 text-sm tracking-wide">
+            連接 Web3 錢包
+        </button>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-2 space-y-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-card rounded-2xl p-5">
+                    <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider">虛擬預言機市價</p>
+                    <p id="uiPrice" class="text-2xl font-bold text-cyan-400 mt-2 font-mono">$1000</p>
+                </div>
+                <div class="glass-card rounded-2xl p-5">
+                    <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider">保險庫狀態</p>
+                    <p id="uiState" class="text-base font-bold text-emerald-400 mt-3">BULL (牛市狂歡)</p>
+                </div>
+                <div class="glass-card rounded-2xl p-5">
+                    <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider">您的份額 (Shares)</p>
+                    <p id="uiShares" class="text-2xl font-bold text-purple-400 mt-2 font-mono">0.00</p>
+                </div>
+                <div class="glass-card rounded-2xl p-5 border-amber-500/10 bg-amber-500/5">
+                    <p class="text-amber-500/80 text-xs font-semibold uppercase tracking-wider">🔥 累積罰款分紅池</p>
+                    <p id="uiPool" class="text-2xl font-bold text-amber-400 mt-2 font-mono">0.00 ETH</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/20 border border-slate-900 rounded-3xl p-8 space-y-6">
+                <h2 class="text-lg font-semibold text-slate-200 tracking-wide flex items-center space-x-2">
+                    <span class="text-cyan-400">⚡</span>
+                    <span>基金核心互動介面</span>
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="glass-card p-6 rounded-2xl space-y-4 bg-slate-950/40">
+                        <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider">存入 ETH 參與智能調配</label>
+                        <input type="number" id="depositAmount" step="0.1" placeholder="0.0 ETH" class="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-cyan-500 transition-all">
+                        <button onclick="handleDeposit()" class="btn-animate w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-xl shadow-lg text-sm">
+                            立即存入資產
+                        </button>
+                    </div>
+
+                    <div class="glass-card p-6 rounded-2xl space-y-4 bg-slate-950/40 flex flex-col justify-between">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider">贖回資產 (自動結算分紅/懲罰)</label>
+                            <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">提示：存入不滿 3 天提款將扣除 5% 注入分紅池；滿 3 天可瓜分分紅池。</p>
+                        </div>
+                        <div class="space-y-2 pt-4">
+                            <button onclick="handleWithdraw()" class="btn-animate w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium py-3 rounded-xl border border-slate-700/50 text-sm">
+                                申請安全提款
+                            </button>
+                            <button id="emergencyBtn" onclick="handleEmergencyRefund()" class="btn-animate w-full bg-red-950/40 hover:bg-red-900/50 text-red-400 border border-red-500/30 font-medium py-3 rounded-xl text-sm hidden animate-bounce">
+                                ⚠️ 觸發緊急保本退款
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-8">
+            <div class="glass-card rounded-3xl p-6 space-y-6 bg-gradient-to-b from-slate-900/30 to-transparent">
+                <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-800/60 pb-3 flex items-center justify-between">
+                    <span>🛠️ 開發者控制台</span>
+                    <span class="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20">Owner Only</span>
+                </h3>
+                
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs text-slate-400">動態調整市場報價</label>
+                        <span id="sliderVal" class="text-cyan-400 font-bold font-mono text-base">$1000</span>
+                    </div>
+                    <input type="range" id="priceSlider" min="200" max="1500" value="1000" class="w-full accent-cyan-500 bg-slate-800 h-1 rounded-lg cursor-pointer" oninput="updateSliderLabel(this.value)">
+                    
+                    <button onclick="changeOraclePrice()" class="btn-animate w-full bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-500/30 font-medium py-2.5 rounded-xl text-xs tracking-wider uppercase">
+                        向區塊鏈廣播新價格
+                    </button>
+                </div>
+
+                <div class="pt-4 border-t border-slate-800/60 space-y-3">
+                    <label class="block text-xs text-slate-400 uppercase tracking-wider">⏳ 區塊鏈時光旅行調節器</label>
+                    <button onclick="travelInTime(4 * 24 * 60 * 60)" class="btn-animate w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-medium py-2.5 rounded-xl text-xs tracking-wide shadow-md shadow-amber-900/20">
+                        ⚡ 讓區塊鏈時間瞬間快進 4 天！
+                    </button>
+                    <p class="text-[10px] text-slate-500">點擊此按鈕將發送低階 RPC 指令至 Hardhat 本地節點，模擬存錢超過 3 天後的場景。</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
+
+        const ABI = [
+            "function cheatForwardTime(uint256 _seconds) external",
+            "function currentMarketState() view returns (uint8)",
+            "function marketPrice() view returns (uint256)",
+            "function accumulatedPenaltyPool() view returns (uint256)", // 🔥 新增讀取紅池的 ABI
+            "function userInfo(address) view returns (uint256 shares, uint256 depositTimestamp)",
+            "function setMarketPrice(uint256 _newPrice) external",
+            "function deposit() external payable",
+            "function withdraw() external",
+            "function emergencyRefund() external"
+        ];
+
+        let provider, signer, contract;
+
+        async function initWeb3() {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    const accounts = await provider.send("eth_requestAccounts", []);
+                    signer = await provider.getSigner();
+                    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+                    
+                    document.getElementById("connectBtn").innerText = `${accounts[0].substring(0,6)}...${accounts[0].substring(38)}`;
+                    document.getElementById("connectBtn").className = "bg-slate-800 border border-slate-700 text-slate-300 font-mono text-sm px-4 py-2 rounded-xl";
+                    await fetchBlockchainData(accounts[0]);
+                    
+                    // 每 2 秒自動刷新，確保紅池跟份額即時跳動
+                    setInterval(() => fetchBlockchainData(accounts[0]), 2000);
+                } catch (err) {
+                    alert("使用者拒絕錢包連線或網路不符");
+                }
+            } else {
+                alert("請使用 Local Server (如 python3 -m http.server 5500) 開啟網頁！");
+            }
+        }
+
+        async function fetchBlockchainData(userAddress) {
+            if (!contract) return;
+            try {
+                const price = await contract.marketPrice();
+                const state = await contract.currentMarketState();
+                const userData = await contract.userInfo(userAddress);
+                const poolAmount = await contract.accumulatedPenaltyPool(); // 🔥 抓取鏈上紅池金額
+                
+                document.getElementById("uiPrice").innerText = `$${price.toString()}`;
+                document.getElementById("uiShares").innerText = ethers.formatEther(userData.shares);
+                document.getElementById("uiPool").innerText = `${ethers.formatEther(poolAmount)} ETH`; // 顯示紅池
+
+                const states = ["BULL (牛市狂歡)", "BEAR (熊市保守)", "FLASH_CRASH (閃崩斷路器！)"];
+                document.getElementById("uiState").innerText = states[state];
+
+                const indicator = document.getElementById("stateIndicator");
+                const ping = document.getElementById("statePing");
+                const emergencyBtn = document.getElementById("emergencyBtn");
+                const stateText = document.getElementById("uiState");
+                
+                if (state == 0) {
+                    indicator.className = "relative inline-flex rounded-full h-3 w-3 bg-emerald-500";
+                    ping.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75";
+                    stateText.className = "text-base font-bold text-emerald-400 mt-3";
+                    emergencyBtn.classList.add("hidden");
+                } else if (state == 1) {
+                    indicator.className = "relative inline-flex rounded-full h-3 w-3 bg-amber-500";
+                    ping.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75";
+                    stateText.className = "text-base font-bold text-amber-400 mt-3";
+                    emergencyBtn.classList.add("hidden");
+                } else if (state == 2) {
+                    indicator.className = "relative inline-flex rounded-full h-3 w-3 bg-red-600";
+                    ping.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75";
+                    stateText.className = "text-base font-bold text-red-500 mt-3 animate-pulse";
+                    emergencyBtn.classList.remove("hidden");
+                }
+            } catch (err) {
+                console.error("同步區塊鏈數據失聯", err);
+            }
+        }
+
+        // 🔥 新增功能：控制本地區塊鏈時間的低階 RPC 呼叫
+        // 修改後的網頁時光旅行按鈕點擊事件
+        async function travelInTime(seconds) {
+            if (!contract) return alert("請先連接錢包！");
+            try {
+                // ⚡ 直接改發送合約交易！MetaMask 100% 聽得懂、絕不報錯
+                const tx = await contract.cheatForwardTime(seconds);
+                await tx.wait(); // 等待鏈上確認
+                alert("⏳ 時光旅行成功！合約已將虛擬時間快進 4 天。");
+                const accounts = await provider.send("eth_accounts", []);
+                await fetchBlockchainData(accounts[0]);
+            } catch (err) {
+                console.error(err);
+                alert("時光旅行失敗，請確認您使用的是 Owner 帳號。");
+            }
+        }
+
+        function updateSliderLabel(val) {
+            document.getElementById("sliderVal").innerText = `$${val}`;
+        }
+
+        async function changeOraclePrice() {
+            const newPrice = document.getElementById("priceSlider").value;
+            try {
+                const tx = await contract.setMarketPrice(newPrice);
+                await tx.wait();
+                const accounts = await provider.send("eth_accounts", []);
+                await fetchBlockchainData(accounts[0]);
+            } catch (err) {
+                alert("廣播失敗：非 Owner 帳號拒絕寫入。");
+            }
+        }
+
+        async function handleDeposit() {
+            const amount = document.getElementById("depositAmount").value;
+            if(!amount) return;
+            try {
+                const tx = await contract.deposit({ value: ethers.parseEther(amount) });
+                await tx.wait();
+                const accounts = await provider.send("eth_accounts", []);
+                await fetchBlockchainData(accounts[0]);
+                document.getElementById("depositAmount").value = "";
+            } catch (err) {
+                alert("交易拒絕：" + err.reason);
+            }
+        }
+
+        async function handleWithdraw() {
+            try {
+                const tx = await contract.withdraw();
+                await tx.wait();
+                const accounts = await provider.send("eth_accounts", []);
+                await fetchBlockchainData(accounts[0]);
+            } catch (err) {
+                alert("提款拒絕：" + err.reason);
+            }
+        }
+
+        async function handleEmergencyRefund() {
+            try {
+                const tx = await contract.emergencyRefund();
+                await tx.wait();
+                const accounts = await provider.send("eth_accounts", []);
+                await fetchBlockchainData(accounts[0]); 
+            } catch (err) {
+                alert("退款拒絕：" + err.reason);
+            }
+        }
+
+        document.getElementById("connectBtn").addEventListener("click", initWeb3);
+    </script>
+</body>
+</html>
