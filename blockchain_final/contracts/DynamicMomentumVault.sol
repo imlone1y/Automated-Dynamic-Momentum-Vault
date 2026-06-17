@@ -2,23 +2,23 @@
 pragma solidity ^0.8.28;
 
 contract DynamicMomentumVault {
-    address public owner;
+    address public owner; // contract admin
     
     enum MarketState { BULL, BEAR, FLASH_CRASH }
-    MarketState public currentMarketState;
+    MarketState public currentMarketState; // state machine: control market state, withdraw, deposit function.
     
     uint256 public marketPrice;
-    uint256 public constant CRASH_THRESHOLD = 500; 
+    uint256 public constant CRASH_THRESHOLD = 500;
     uint256 public constant EARLY_WITHDRAW_PENALTY_TIME = 3 days; 
     uint256 public totalVaultShares;
-    uint256 public accumulatedPenaltyPool; 
+    uint256 public accumulatedPenaltyPool; // (分紅池）：用來動態記錄和儲存所有「未滿 3 天提款者」被扣除的 5% 罰款總額。
 
     // 時光旅行時間偏移量（秒數）
     uint256 public timeOffset;
 
     struct UserInfo {
         uint256 shares;
-        uint256 depositTimestamp;
+        uint256 depositTimestamp; // record final deposit time
     }
     
     mapping(address => UserInfo) public userInfo;
@@ -54,7 +54,7 @@ contract DynamicMomentumVault {
         return block.timestamp + timeOffset;
     }
 
-    function setMarketPrice(uint256 _newPrice) external onlyOwner {
+    function setMarketPrice(uint256 _newPrice) external onlyOwner { // set the market state BULL / BEAR / FLASH_CRASH
         marketPrice = _newPrice;
         
         if (_newPrice <= CRASH_THRESHOLD) {
@@ -69,7 +69,7 @@ contract DynamicMomentumVault {
         emit MarketStateChanged(currentMarketState, _newPrice);
     }
 
-    function deposit() external payable whenNotCrashed {
+    function deposit() external payable whenNotCrashed { // 非崩盤時才能使用
         require(msg.value > 0, "Cannot deposit 0");
         
         uint256 shareMultiplier = 100;
@@ -86,8 +86,7 @@ contract DynamicMomentumVault {
         emit Deposit(msg.sender, msg.value, sharesToMint);
     }
 
-    // ⚡ 修改重點：加入 _sharesToWithdraw 參數，支援部分提領
-    function withdraw(uint256 _sharesToWithdraw) external whenNotCrashed {
+    function withdraw(uint256 _sharesToWithdraw) external whenNotCrashed { // 非崩盤時才能使用
         UserInfo storage user = userInfo[msg.sender];
         require(_sharesToWithdraw > 0, "Cannot withdraw 0 shares");
         require(user.shares >= _sharesToWithdraw, "Not enough shares to withdraw");
